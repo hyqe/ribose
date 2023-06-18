@@ -35,12 +35,12 @@ func (s *Service) Connect(ctx context.Context) error {
 	}
 	s.DB = db
 
-	err = s.migrate()
+	err = s.migrateSqlDatabase()
 	if err != nil {
 		return fmt.Errorf("user db migration failed: %w", err)
 	}
 
-	return s.prepare(ctx)
+	return s.prepareSqlStatements(ctx)
 }
 
 // Close all open connections safely.
@@ -52,7 +52,12 @@ func (s *Service) Close() (err error) {
 	return
 }
 
-func (s *Service) migrate() (err error) {
+// migrateSqlDatabase runs sql schema statements in the migrations directory.
+// db schema must be immutable.
+// sql file names must take the form of: <index>_<title>.<up|down>.sql
+//
+// sql files will be run in the order of their index.
+func (s *Service) migrateSqlDatabase() (err error) {
 	driver, err := postgres.WithInstance(s.DB, &postgres.Config{})
 	if err != nil {
 		return err
@@ -65,7 +70,7 @@ func (s *Service) migrate() (err error) {
 	return
 }
 
-func (s *Service) prepare(ctx context.Context) error {
+func (s *Service) prepareSqlStatements(ctx context.Context) error {
 	err := s.prepareGetByUUID(ctx)
 	if err != nil {
 		return err
