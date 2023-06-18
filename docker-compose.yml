@@ -1,0 +1,26 @@
+version: "3.8"
+services:
+  app:
+    build:
+      context: .
+    ports:
+      - 80:80
+    restart: unless-stopped
+    environment:
+      POSTGRES_URL: postgres://postgres:postgres@db:5432?sslmode=disable&connect_timeout=10&application_name=ribose
+      MIGRATIONS_URL: file:///migrations
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres
+    ports:
+      - 5432:5432
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d postgres -U postgres" ]
+      interval: 1s
+      timeout: 10s
+      retries: 5
