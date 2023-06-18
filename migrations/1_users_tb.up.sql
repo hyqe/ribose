@@ -4,5 +4,5 @@ CREATE TABLE IF NOT EXISTS users (
     uuid UUID NOT NULL DEFAULT gen_random_uuid(),
     email TEXT NOT NULL
 );
-CREATE UNIQUE INDEX idx_users_uuid ON users (uuid);
-CREATE UNIQUE INDEX idx_users_email ON users (email);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_uuid ON users (uuid);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users (email);
