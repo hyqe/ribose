@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/hyqe/ribose/internal/database"
 	"github.com/hyqe/ribose/internal/fit"
 	"github.com/hyqe/ribose/internal/users"
 )
@@ -43,14 +44,11 @@ func Run(ctx context.Context) {
 	}))
 	app.Use(compress.New())
 
-	userStorage := users.NewUserStorage(db)
+	queries := database.New(db)
 
-	err = userStorage.Prepare(ctx)
-	if err != nil {
-		log.Fatalf("failed to prepare user service: %v", err)
-	}
+	userSvc := users.NewService(queries)
 
-	fit.NewRPC(userStorage).MountFiberApp(app)
+	fit.NewRPC(userSvc).MountFiberApp(app)
 
 	go app.Listen(cfg.Addr())
 

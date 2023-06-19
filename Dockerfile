@@ -8,6 +8,6 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /ribose
 FROM debian
 WORKDIR /
 COPY --from=builder /ribose .
-COPY ./migrations/* /migrations/
+COPY ./internal/database/schema /migrations/
 EXPOSE 80
 ENTRYPOINT ["/ribose"]

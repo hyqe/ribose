@@ -18,7 +18,6 @@ import (
 )
 
 type RPC struct {
-	name    string // name of rpc struct
 	methods map[string]*Method
 	ptr     reflect.Value
 	*validator.Validate
@@ -47,11 +46,17 @@ type RPC struct {
 func NewRPC(ptr any) *RPC {
 	reflectVal := reflect.ValueOf(ptr)
 	return &RPC{
-		name:     getTypeName(ptr),
 		methods:  parseMethods(reflectVal),
 		ptr:      reflectVal,
 		Validate: validator.New(),
 	}
+}
+
+func (r *RPC) Name() string {
+	v := reflect.Indirect(r.ptr)
+	typName := v.Type().Name()
+	pkgName := v.Type().PkgPath()
+	return path.Base(pkgName) + "." + typName
 }
 
 func parseMethods(v reflect.Value) map[string]*Method {
@@ -112,14 +117,14 @@ func (s *RPC) MountFiberApp(app *fiber.App) fiber.Router {
 		}(m)
 	}
 
-	return app.Mount("/"+s.name, sub)
+	return app.Mount("/"+s.Name(), sub)
 }
 
 func (s *RPC) NewNetHttpHandler() http.HandlerFunc {
 	mux := http.NewServeMux()
 	for _, m := range s.methods {
 		func(method *Method) {
-			fullPath, _ := url.JoinPath("/", s.name, method.name)
+			fullPath, _ := url.JoinPath("/", s.Name(), method.name)
 			mux.HandleFunc(fullPath, func(w http.ResponseWriter, r *http.Request) {
 				in := method.NewIn().Interface()
 				err := json.NewDecoder(r.Body).Decode(in)
@@ -342,10 +347,6 @@ func (m *Method) Invoke(ctx context.Context, in any) (any, status.Status) {
 	out := resp[0].Interface()
 	status := resp[1].Interface().(status.Status)
 	return out, status
-}
-
-func getTypeName(v any) string {
-	return reflect.Indirect(reflect.ValueOf(v)).Type().Name()
 }
 
 func ListExportedMethodNames(v reflect.Type) []string {

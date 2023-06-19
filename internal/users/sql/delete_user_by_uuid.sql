@@ -1,1 +1,0 @@
-DELETE FROM users WHERE uuid = $1;
