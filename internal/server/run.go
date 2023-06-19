@@ -27,6 +27,12 @@ func Run(ctx context.Context) {
 		log.Fatalf("failed to load config: %v", err)
 	}
 
+	db, err := connectDB(ctx, cfg.PostgresURL, cfg.MigrationsURL)
+	if err != nil {
+		log.Fatalf("failed to connect db: %v", err)
+	}
+	defer db.Close()
+
 	app := fiber.New()
 	app.Use(logger.New())
 	app.Use(requestid.New())
@@ -37,13 +43,12 @@ func Run(ctx context.Context) {
 	}))
 	app.Use(compress.New())
 
-	userStorage := users.NewUserStorage(cfg.PostgresURL, cfg.MigrationsURL)
+	userStorage := users.NewUserStorage(db)
 
-	err = userStorage.Connect(ctx)
+	err = userStorage.Prepare(ctx)
 	if err != nil {
-		log.Fatalf("failed to connect user service: %v", err)
+		log.Fatalf("failed to prepare user service: %v", err)
 	}
-	defer userStorage.Close()
 
 	fit.NewRPC(userStorage).MountFiberApp(app)
 

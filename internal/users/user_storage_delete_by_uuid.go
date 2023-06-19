@@ -16,7 +16,7 @@ type DeleteByUUIDResponse struct{}
 
 func (u *UserStorage) DeleteByUUID(ctx context.Context, in *DeleteByUUIDRequest) (*DeleteByUUIDResponse, status.Status) {
 	out := new(DeleteByUUIDResponse)
-	err := u.stmt_select_user_by_email.QueryRow(in.UUID).Err()
+	err := u.stmt_delete_user_by_uuid.QueryRow(in.UUID).Err()
 	if e, ok := err.(*pq.Error); ok {
 		return nil, status.Pg(e)
 	}
