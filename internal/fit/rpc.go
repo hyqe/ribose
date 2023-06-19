@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 	"reflect"
+	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
 	"github.com/hyqe/ribose/internal/fit/status"
 )
 
@@ -20,32 +24,72 @@ type RPC struct {
 	*validator.Validate
 }
 
+// NewRPC builds an RPC with from an instance of a type and
+// its methods.
+//
+// The exported methods must have the following signature.
+// Where INPUT is a pointer to your input type, and OUTPUT
+// is value your method sends back to the client.
+//
+//	fn(ctx context.Context, in *INPUT) (*OUTPUT, status.Status)
+//
+// INPUT is validated before being passed to it method. see
+// https://pkg.go.dev/github.com/go-playground/validator/v10
+//
+//	type Foo struct {
+//		Email string `validate:"email"`
+//	}
+//
+// Docs endpoints are created for each method.
+//
+//	GET /<type>/help // gets list of methods
+//	GET /<type>/<method>/help // gets INPUT/OUTPUT
 func NewRPC(ptr any) *RPC {
 	reflectVal := reflect.ValueOf(ptr)
+	return &RPC{
+		name:     getTypeName(ptr),
+		methods:  parseMethods(reflectVal),
+		ptr:      reflectVal,
+		Validate: validator.New(),
+	}
+}
+
+func parseMethods(v reflect.Value) map[string]*Method {
 	methods := make(map[string]*Method)
-
-	methodNames := ListExportedMethodNames(ptr)
-
+	methodNames := ListExportedMethodNames(v.Type())
 	for _, methodName := range methodNames {
-		if method, ok := newMethod(reflectVal, methodName); ok {
+		if method, ok := newMethod(v, methodName); ok {
 			methods[methodName] = &method
 		}
 	}
+	return methods
+}
 
-	return &RPC{
-		name:     getTypeName(ptr),
-		methods:  methods,
-		ptr:      reflectVal,
-		Validate: validator.New(),
+func (s *RPC) docsJSON() any {
+	methods := make([]string, 0, len(s.methods))
+	for _, m := range s.methods {
+		methods = append(methods, m.name)
+	}
+	return map[string]any{
+		"methods": methods,
 	}
 }
 
 func (s *RPC) MountFiberApp(app *fiber.App) fiber.Router {
 	sub := fiber.New()
 
+	sub.Get("/help", func(c *fiber.Ctx) error {
+		return c.JSON(s.docsJSON())
+	})
+
 	for _, m := range s.methods {
 		func(method *Method) {
-			sub.Post("/"+method.name, func(c *fiber.Ctx) error {
+			subPath, _ := url.JoinPath("/", method.name)
+			subHelp, _ := url.JoinPath("/", method.name, "help")
+			sub.Get(path.Join(subHelp), func(c *fiber.Ctx) error {
+				return c.JSON(method.docsJSON())
+			})
+			sub.Post(subPath, func(c *fiber.Ctx) error {
 				in := method.NewIn().Interface()
 				err := c.BodyParser(in)
 				if err != nil {
@@ -75,7 +119,8 @@ func (s *RPC) NewNetHttpHandler() http.HandlerFunc {
 	mux := http.NewServeMux()
 	for _, m := range s.methods {
 		func(method *Method) {
-			mux.HandleFunc(path.Join("/", s.name, method.name), func(w http.ResponseWriter, r *http.Request) {
+			fullPath, _ := url.JoinPath("/", s.name, method.name)
+			mux.HandleFunc(fullPath, func(w http.ResponseWriter, r *http.Request) {
 				in := method.NewIn().Interface()
 				err := json.NewDecoder(r.Body).Decode(in)
 				if err != nil {
@@ -126,19 +171,12 @@ func newMethod(svc reflect.Value, methodName string) (method Method, ok bool) {
 	}
 
 	// first arg is a context
-	//
-	// TODO: find the correct way to check the type of an context.Context.
-	// since context.Context is an interface, its not possible to just mint a new
-	// instance of it, and check its interface.
-
-	firstArgTypName := reflectedMethod.Type.In(1).Name()
-	firstArgTypPath := reflectedMethod.Type.In(1).PkgPath()
-	firstArgFullTypName := firstArgTypPath + "." + firstArgTypName
-	if firstArgFullTypName != "context.Context" {
+	reflectContext := reflect.TypeOf((*context.Context)(nil)).Elem()
+	if !reflectedMethod.Type.In(1).Implements(reflectContext) {
 		return
 	}
 
-	// second arg is a struct
+	// second arg is a *struct
 	if reflect.Pointer != reflectedMethod.Type.In(2).Kind() {
 		return
 	}
@@ -152,7 +190,7 @@ func newMethod(svc reflect.Value, methodName string) (method Method, ok bool) {
 		return
 	}
 
-	// second arg is a struct
+	// first return is a *struct
 	if reflect.Pointer != reflectedMethod.Type.Out(0).Kind() {
 		return
 	}
@@ -160,7 +198,7 @@ func newMethod(svc reflect.Value, methodName string) (method Method, ok bool) {
 		return
 	}
 
-	// second arg is a struct
+	// second return is a status.Status
 	if reflect.TypeOf(status.Status{}) != reflectedMethod.Type.Out(1) {
 		return
 	}
@@ -175,6 +213,116 @@ func newMethod(svc reflect.Value, methodName string) (method Method, ok bool) {
 		name: reflectedMethod.Name,
 		fn:   reflectedMethod.Func,
 	}, true
+}
+
+func (m *Method) docsJSON() any {
+	return map[string]any{
+		"request": Property{
+			Type:       "object",
+			Properties: buildStructDocs(m.inType.Elem()),
+		},
+		"response": Property{
+			Type:       "object",
+			Properties: buildStructDocs(m.outType.Elem()),
+		},
+	}
+}
+
+// buildStructDocs support maps/slices fields
+func buildStructDocs(v reflect.Type) map[string]Property {
+	out := make(map[string]Property)
+	NumField := v.NumField()
+	for f := 0; f < NumField; f++ {
+		field := v.Field(f)
+
+		if !field.IsExported() {
+			continue
+		}
+
+		var fieldName string
+		jsonTag, ok := field.Tag.Lookup("json")
+		if ok {
+			jsonTagParts := strings.Split(jsonTag, ",")
+			fieldName = jsonTagParts[0]
+		}
+
+		var example string
+		exampleTag, ok := field.Tag.Lookup("example")
+		if ok {
+			example = exampleTag
+		}
+
+		var format string
+		formatTag, ok := field.Tag.Lookup("format")
+		if ok {
+			format = formatTag
+		}
+
+		//var validate string
+		validateTag, ok := field.Tag.Lookup("validate")
+		if ok {
+			format = validateTag
+		}
+
+		var fieldTypeName string
+		switch field.Type {
+		case reflect.TypeOf(uuid.UUID{}):
+			out[fieldName] = Property{
+				Type:    "string",
+				Format:  "uuid",
+				Example: uuid.NewString(),
+			}
+		case reflect.TypeOf(time.Time{}):
+			out[fieldName] = Property{
+				Type:    "string",
+				Format:  "rfc3339",
+				Example: time.Now().UTC().Format(time.RFC3339),
+			}
+		default:
+			switch field.Type.Kind() {
+			case reflect.Struct:
+				out[fieldName] = Property{
+					Type:       "object",
+					Properties: buildStructDocs(field.Type),
+					Example:    example,
+					//Validate:   validate,
+					Format: format,
+				}
+			case reflect.Map:
+				out[fieldName] = Property{
+					Type:    "object",
+					Example: example,
+					//Validate: validate,
+					Format: format,
+				}
+			case reflect.Slice:
+				out[fieldName] = Property{
+					Type:    "array",
+					Example: example,
+					//Validate: validate,
+					Format: format,
+				}
+			default:
+				fieldTypeName = field.Type.Kind().String()
+				out[fieldName] = Property{
+					Type:    fieldTypeName,
+					Example: example,
+					//Validate: validate,
+					Format: format,
+				}
+			}
+		}
+
+	}
+	return out
+}
+
+type Property struct {
+	Type       string              `json:"type,omitempty"`
+	Format     string              `json:"format,omitempty"`
+	Validate   string              `json:"validate,omitempty"`
+	Example    string              `json:"example,omitempty"`
+	Properties map[string]Property `json:"properties,omitempty"`
 }
 
 // NewIn mints a new inType.
@@ -200,14 +348,12 @@ func getTypeName(v any) string {
 	return reflect.Indirect(reflect.ValueOf(v)).Type().Name()
 }
 
-func ListExportedMethodNames(v any) []string {
+func ListExportedMethodNames(v reflect.Type) []string {
 	methodNames := make([]string, 0)
 
-	reflectedType := reflect.TypeOf(v)
-
-	numberOfMethods := reflectedType.NumMethod()
+	numberOfMethods := v.NumMethod()
 	for m := 0; m < numberOfMethods; m++ {
-		reflectedMethod := reflectedType.Method(m)
+		reflectedMethod := v.Method(m)
 
 		// Method must be exported.
 		if !reflectedMethod.IsExported() {

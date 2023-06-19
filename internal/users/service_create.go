@@ -11,7 +11,7 @@ import (
 )
 
 type CreateRequest struct {
-	Email string `json:"email" validate:"email"`
+	Email string `json:"email" validate:"email" example:"foo@example.com"`
 }
 type CreateResponse = User
 

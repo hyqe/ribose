@@ -9,7 +9,7 @@ import (
 )
 
 type GetByEmailRequest struct {
-	Email string `json:"email"`
+	Email string `json:"email" validate:"email" example:"foo@example.com"`
 }
 type GetByEmailResponse = User
 
