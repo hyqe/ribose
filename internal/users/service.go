@@ -13,7 +13,7 @@ import (
 )
 
 type Service struct {
-	postgresDSN   string
+	postgresURL   string
 	migrationsURL string
 	*sql.DB
 	stmt_select_user_by_uuid  *sql.Stmt
@@ -21,15 +21,15 @@ type Service struct {
 	stmt_delete_user_by_uuid  *sql.Stmt
 }
 
-func NewService(postgresDSN, migrationsURL string) *Service {
+func NewService(postgresURL, migrationsURL string) *Service {
 	return &Service{
-		postgresDSN:   postgresDSN,
+		postgresURL:   postgresURL,
 		migrationsURL: migrationsURL,
 	}
 }
 
 func (s *Service) Connect(ctx context.Context) error {
-	db, err := sql.Open("postgres", s.postgresDSN)
+	db, err := sql.Open("postgres", s.postgresURL)
 	if err != nil {
 		return fmt.Errorf("failed to open db connection: %w", err)
 	}
