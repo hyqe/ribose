@@ -14,11 +14,11 @@ type GetByUUIDRequest struct {
 }
 type GetByUUIDResponse = User
 
-func (s *Service) GetByUUID(ctx context.Context, in GetByUUIDRequest) (GetByUUIDResponse, status.Status) {
-	var out GetByUUIDResponse
-	err := s.stmt_select_user_by_uuid.QueryRow(in.UUID).Scan(out.Fields()...)
+func (u *UserStorage) GetByUUID(ctx context.Context, in *GetByUUIDRequest) (*GetByUUIDResponse, status.Status) {
+	out := new(GetByUUIDResponse)
+	err := u.stmt_select_user_by_uuid.QueryRow(in.UUID).Scan(out.Fields()...)
 	if e, ok := err.(*pq.Error); ok {
-		return out, status.Pg(e)
+		return nil, status.Pg(e)
 	}
 	return out, status.OK
 }
@@ -26,11 +26,11 @@ func (s *Service) GetByUUID(ctx context.Context, in GetByUUIDRequest) (GetByUUID
 //go:embed sql/select_user_by_uuid.sql
 var sql_select_user_by_uuid string
 
-func (s *Service) prepareGetByUUID(ctx context.Context) error {
-	stmt, err := s.DB.PrepareContext(ctx, sql_select_user_by_uuid)
+func (u *UserStorage) prepareGetByUUID(ctx context.Context) error {
+	stmt, err := u.DB.PrepareContext(ctx, sql_select_user_by_uuid)
 	if err != nil {
 		return err
 	}
-	s.stmt_select_user_by_uuid = stmt
+	u.stmt_select_user_by_uuid = stmt
 	return nil
 }

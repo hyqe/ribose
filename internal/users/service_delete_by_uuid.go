@@ -14,11 +14,11 @@ type DeleteByUUIDRequest struct {
 }
 type DeleteByUUIDResponse struct{}
 
-func (s *Service) DeleteByUUID(ctx context.Context, in DeleteByUUIDRequest) (DeleteByUUIDResponse, status.Status) {
-	var out DeleteByUUIDResponse
-	err := s.stmt_select_user_by_email.QueryRow(in.UUID).Err()
+func (u *UserStorage) DeleteByUUID(ctx context.Context, in *DeleteByUUIDRequest) (*DeleteByUUIDResponse, status.Status) {
+	out := new(DeleteByUUIDResponse)
+	err := u.stmt_select_user_by_email.QueryRow(in.UUID).Err()
 	if e, ok := err.(*pq.Error); ok {
-		return out, status.Pg(e)
+		return nil, status.Pg(e)
 	}
 	return out, status.OK
 }
@@ -26,11 +26,11 @@ func (s *Service) DeleteByUUID(ctx context.Context, in DeleteByUUIDRequest) (Del
 //go:embed sql/delete_user_by_uuid.sql
 var sql_delete_user_by_uuid string
 
-func (s *Service) prepareDeleteByUUID(ctx context.Context) error {
-	stmt, err := s.DB.PrepareContext(ctx, sql_delete_user_by_uuid)
+func (u *UserStorage) prepareDeleteByUUID(ctx context.Context) error {
+	stmt, err := u.DB.PrepareContext(ctx, sql_delete_user_by_uuid)
 	if err != nil {
 		return err
 	}
-	s.stmt_delete_user_by_uuid = stmt
+	u.stmt_delete_user_by_uuid = stmt
 	return nil
 }

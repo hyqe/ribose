@@ -7,45 +7,48 @@ import (
 
 	_ "embed"
 
+	"github.com/go-playground/validator/v10"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
-type Service struct {
+type UserStorage struct {
 	postgresURL   string
 	migrationsURL string
+	*validator.Validate
 	*sql.DB
 	stmt_select_user_by_uuid  *sql.Stmt
 	stmt_select_user_by_email *sql.Stmt
 	stmt_delete_user_by_uuid  *sql.Stmt
 }
 
-func NewService(postgresURL, migrationsURL string) *Service {
-	return &Service{
+func NewUserStorage(postgresURL, migrationsURL string) *UserStorage {
+	return &UserStorage{
 		postgresURL:   postgresURL,
 		migrationsURL: migrationsURL,
+		Validate:      validator.New(),
 	}
 }
 
-func (s *Service) Connect(ctx context.Context) error {
-	db, err := sql.Open("postgres", s.postgresURL)
+func (u *UserStorage) Connect(ctx context.Context) error {
+	db, err := sql.Open("postgres", u.postgresURL)
 	if err != nil {
 		return fmt.Errorf("failed to open db connection: %w", err)
 	}
-	s.DB = db
+	u.DB = db
 
-	err = s.migrateSqlDatabase()
+	err = u.migrateSqlDatabase()
 	if err != nil {
 		return fmt.Errorf("user db migration failed: %w", err)
 	}
 
-	return s.prepareSqlStatements(ctx)
+	return u.prepareSqlStatements(ctx)
 }
 
 // Close all open connections safely.
-func (s *Service) Close() (err error) {
-	err = s.DB.Close()
+func (u *UserStorage) Close() (err error) {
+	err = u.DB.Close()
 	if err != nil {
 		return err
 	}
@@ -57,12 +60,12 @@ func (s *Service) Close() (err error) {
 // sql file names must take the form of: <index>_<title>.<up|down>.sql
 //
 // sql files will be run in the order of their index.
-func (s *Service) migrateSqlDatabase() (err error) {
-	driver, err := postgres.WithInstance(s.DB, &postgres.Config{})
+func (u *UserStorage) migrateSqlDatabase() (err error) {
+	driver, err := postgres.WithInstance(u.DB, &postgres.Config{})
 	if err != nil {
 		return err
 	}
-	m, err := migrate.NewWithDatabaseInstance(s.migrationsURL, "postgres", driver)
+	m, err := migrate.NewWithDatabaseInstance(u.migrationsURL, "postgres", driver)
 	if err != nil {
 		return err
 	}
@@ -70,16 +73,16 @@ func (s *Service) migrateSqlDatabase() (err error) {
 	return
 }
 
-func (s *Service) prepareSqlStatements(ctx context.Context) error {
-	err := s.prepareGetByUUID(ctx)
+func (u *UserStorage) prepareSqlStatements(ctx context.Context) error {
+	err := u.prepareGetByUUID(ctx)
 	if err != nil {
 		return err
 	}
-	err = s.prepareGetByEmail(ctx)
+	err = u.prepareGetByEmail(ctx)
 	if err != nil {
 		return err
 	}
-	err = s.prepareDeleteByUUID(ctx)
+	err = u.prepareDeleteByUUID(ctx)
 	if err != nil {
 		return err
 	}

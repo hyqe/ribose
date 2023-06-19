@@ -12,6 +12,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
+	"github.com/hyqe/ribose/internal/fit"
 	"github.com/hyqe/ribose/internal/users"
 )
 
@@ -36,15 +37,15 @@ func Run(ctx context.Context) {
 	}))
 	app.Use(compress.New())
 
-	usersService := users.NewService(cfg.PostgresURL, cfg.MigrationsURL)
+	userStorage := users.NewUserStorage(cfg.PostgresURL, cfg.MigrationsURL)
 
-	err = usersService.Connect(ctx)
+	err = userStorage.Connect(ctx)
 	if err != nil {
 		log.Fatalf("failed to connect user service: %v", err)
 	}
-	defer usersService.Close()
+	defer userStorage.Close()
 
-	app.Mount("/users", usersService.Router())
+	fit.NewRPC(userStorage).MountFiberApp(app)
 
 	go app.Listen(cfg.Addr())
 

@@ -11,15 +11,15 @@ import (
 )
 
 type CreateRequest struct {
-	Email string `json:"email"`
+	Email string `json:"email" validate:"email"`
 }
 type CreateResponse = User
 
-func (s *Service) Create(ctx context.Context, in CreateRequest) (CreateResponse, status.Status) {
-	var out CreateResponse
-	tx, err := s.DB.Begin()
+func (u *UserStorage) Create(ctx context.Context, in *CreateRequest) (*CreateResponse, status.Status) {
+	out := new(CreateResponse)
+	tx, err := u.DB.Begin()
 	if err != nil {
-		return out, status.Newf(codes.Internal, "failed to begin transaction: %v", err)
+		return nil, status.Newf(codes.Internal, "failed to begin transaction: %v", err)
 	}
 	defer func() {
 		if err != nil {
@@ -31,12 +31,12 @@ func (s *Service) Create(ctx context.Context, in CreateRequest) (CreateResponse,
 
 	err = tx.QueryRowContext(ctx, sql_insert_user, in.Email).Scan(out.Fields()...)
 	if e, ok := err.(*pq.Error); ok {
-		return out, status.Pg(e)
+		return nil, status.Pg(e)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return out, status.New(codes.Internal, err)
+		return nil, status.New(codes.Internal, err)
 	}
 
 	return out, status.OK

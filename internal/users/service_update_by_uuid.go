@@ -17,11 +17,11 @@ type UpdateByUUIDRequest = struct {
 }
 type UpdateByUUIDResponse = User
 
-func (s *Service) UpdateByUUID(ctx context.Context, in UpdateByUUIDRequest) (UpdateByUUIDResponse, status.Status) {
-	var out UpdateByUUIDResponse
-	tx, err := s.DB.Begin()
+func (u *UserStorage) UpdateByUUID(ctx context.Context, in *UpdateByUUIDRequest) (*UpdateByUUIDResponse, status.Status) {
+	out := new(UpdateByUUIDResponse)
+	tx, err := u.DB.Begin()
 	if err != nil {
-		return out, status.Newf(codes.Internal, "failed to begin transaction: %v", err)
+		return nil, status.Newf(codes.Internal, "failed to begin transaction: %v", err)
 	}
 	defer func() {
 		if err != nil {
@@ -33,12 +33,12 @@ func (s *Service) UpdateByUUID(ctx context.Context, in UpdateByUUIDRequest) (Upd
 
 	err = tx.QueryRowContext(ctx, sql_update_user_by_uuid, in.UUID, in.User.Email).Scan(out.Fields()...)
 	if e, ok := err.(*pq.Error); ok {
-		return out, status.Pg(e)
+		return nil, status.Pg(e)
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		return out, status.New(codes.Internal, err)
+		return nil, status.New(codes.Internal, err)
 	}
 
 	return out, status.OK

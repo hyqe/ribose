@@ -7,11 +7,12 @@ import (
 	"github.com/lib/pq"
 )
 
-// convenience vars for common success response.
+// convenience vars for common response.
 var (
 	OK        = Status{Code: codes.OK}
 	Created   = Status{Code: codes.Created}
 	NoContent = Status{Code: codes.NoContent}
+	NotFound  = Status{Code: codes.NotFound}
 )
 
 type Status struct {
