@@ -11,5 +11,5 @@ docker compose up --build
 Generate database query go files.
 
 ```sh
-./scripts/gen_queries_funcs.sh
+./scripts/gen_queries.sh
 ```
